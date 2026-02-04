@@ -1,12 +1,13 @@
 # Urait downloader
 
+import time
+import sys
 import os
 import img2pdf
 from configuration import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-import time
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -16,19 +17,20 @@ def delete_tmp_files(pages)->None:
         os.remove(page)
 
 def builtPDF(name, pages)->None:
-
-    homepath = os.getenv('USERPROFILE')
-    file_path = homepath + '\\UraitDownloader\\'
-
-    if not os.path.isdir(file_path):
-        os.mkdir(file_path)
-
-
-    with open(f"{file_path}{name}.pdf","ab") as f:
+    with open(f"{name}.pdf","ab") as f:
             f.write(img2pdf.convert(pages))
 
+def getURL() -> str:
 
-def get_data(URL: str)-> str: # List
+    bookURL = input('Всавьте ссылку на книгу\n==> ')
+
+    viewerURL = bookURL.replace("book", "viewer") + '#page/'
+    bookname = (bookURL.split('/'))[4]
+
+    return (viewerURL, bookname)
+
+
+def get_data(URL: str, startpage)-> str: # List
 
     result = []
 
@@ -41,19 +43,21 @@ def get_data(URL: str)-> str: # List
     if AUTH:
 
         total_pages = get_total_pages(driver, URL)
-        erase_useless_elements(driver)
 
-        for pageN in range(total_pages):
+        for pageN in range(int(startpage), total_pages):
+            driver.get(URL + f"{pageN}")
+            erase_useless_elements(driver)
+            page_name = f"page_{pageN}"
 
-            driver.get(URL + str(pageN+1))
+            wait_element = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.ID, page_name)))
 
-            wait_element = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.ID, "page_"+str(pageN+1))))
+            page = driver.find_element(By.ID, page_name)
+            page.screenshot(page_name + ".png")
 
-            page = driver.find_element(By.ID, "page_"+str(pageN+1))
-            name = f'page_{pageN+1}.png'
-            page.screenshot(name)
-
-            result.append(name)
+            result.append(page_name + ".png")
+            if(os.system('cls')):
+                os.system('clear')
+            print(f"{pageN}/{total_pages}")
     driver.quit()
 
     return result
@@ -80,19 +84,31 @@ def authorization(driver)-> bool:
 
 def erase_useless_elements(driver)-> None:
 
-    viewer_bar = driver.find_element(By.ID, "viewer__bar")
-    driver.execute_script("arguments[0].style.opacity = '0';",viewer_bar)
+    elements = ["viewer__bar","viewer__header", "jvLabelWrap"]
+    classes = ["flex", "feedback-hotline","notifications", "menu-visible"]
 
-    viewer__header = driver.find_element(By.ID, "viewer__header")
-    driver.execute_script("arguments[0].style.opacity = '0';",viewer__header)
+    for el in elements:
+        try:
+            driver.execute_script(f"{el}.style.opacity = '0';")
+        except:
+           print("error")
 
-    notification = driver.find_element(By.ID, "viewer__wrapper__notifications-new-bottom")
-    driver.execute_script("arguments[0].style.opacity = '0';", notification)
+    for clas in classes:
+        cmd = f"for (const el of document.getElementsByClassName('{clas}'))" + "{el.style.opacity = '0';}"
+        driver.execute_script(cmd)
+
+def collect_pages():
+    pages = []
+    files = os.listdir()
+    for file in files:
+        if ".png" in file:
+            pages.append(file)
+    return pages
 
 def get_total_pages(driver,url: str)-> int:
 
     driver.get(url + '1')  # url to page 1
-    wait_element = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.ID, "viewer__bar__pages-scale")))
+    wait_element = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "viewer__bar__pages-scale")))
 
     element_pages = driver.find_element(By.ID, "viewer__bar__pages-scale").text.split()
 
@@ -100,18 +116,19 @@ def get_total_pages(driver,url: str)-> int:
 
     return total_pages
 
-def main():
+def main(startpage):
 
     url,bookname = getURL()
-    print("загрузка страниц")
-    pages = get_data(url)
+    print(f"загрузка страниц, начиная с {startpage}")
+    get_data(url, startpage)
+    pages = collect_pages()
     print("создание пфд документа")
     builtPDF(bookname, pages)
 
-    delete_tmp_files(pages)
+  #  delete_tmp_files(pages)
 
-    print("\n\n\nФайл сохранен  в C\\USERS\\ВАШ_ПОЛЬЗОВАТЕЛЬ\\UraitDownloader")
     q = input('\nenter....')
 
 if __name__ == '__main__':
-    main()
+    startpage = sys.argv[1] if len(sys.argv) > 1 else 1
+    main(startpage)
